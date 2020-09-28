@@ -1,0 +1,143 @@
+﻿@page "/Todos"
+@attribute [Authorize(Policy = "SecurityLevel1")]
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Data.ITodosService TodosService
+
+<h1>Todo list</h1>
+<AuthorizeView Policy="IsAdmin">
+    <p>
+        Filter by User Id: <input type="number" @oninput="@((arg) => FilterByUserId(arg))" style="width:50px" />
+    </p>
+</AuthorizeView>
+
+<p>
+    Filter by completed status:
+    <select class="form-control selectpicker" @onchange="@((arg) => FilterByCompletedStatus(arg))" style="width:100px">
+        <option>Both</option>
+        <option>False</option>
+        <option>True</option>
+    </select>
+</p>
+@if (allTodos == null)
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
+else if (!allTodos.Any())
+{
+    <p>
+        <em>No ToDo items exist. Please add some.</em>
+    </p>
+}
+else
+{ <table class="table">
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>Todo ID</th>
+                <th>Title</th>
+                <th>Completed?</th>
+                <AuthorizeView Policy="SecurityLevel2">
+                    <th>Remove</th>
+                </AuthorizeView>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in todosToShow)
+            {
+                <tr>
+                    <td>@item.UserId</td>
+                    <td>@item.TodoId</td>
+                    <td>@item.Title</td>
+                    <td>
+                        <input type="checkbox" checked=@item.IsCompleted @onchange="@((arg) => CompletedChange(arg,item))" />
+                    </td>
+                    <td>
+                        <AuthorizeView Policy="SecurityLevel2">
+                            <button @onclick="@(() => RemoveTodo(item.TodoId))">
+                                <i class="oi oi-trash" style="color:red" />
+                            </button>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>}
+
+@code {
+    private IList<Models.Todo> todosToShow;
+    private IList<Models.Todo> allTodos;
+
+    private int? filterById;
+    private bool? filterByIsCompleted;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; }
+
+    private void FilterByUserId(ChangeEventArgs changeEventArgs)
+    {
+        try
+        {
+            FilterByUserId(int.Parse(changeEventArgs.Value.ToString()));
+        }
+        catch (Exception e) { }
+    }
+    private void FilterByUserId(int sortId)
+    {
+        filterById = null;
+        try
+        {
+            filterById = sortId;
+        }
+        catch (Exception e) { }
+        ExecuteFilter();
+    }
+    private void FilterByCompletedStatus(ChangeEventArgs args)
+    {
+        filterByIsCompleted = null;
+        try
+        {
+            filterByIsCompleted = bool.Parse(args.Value.ToString());
+        }
+        catch (Exception e) { }
+        ExecuteFilter();
+    }
+    private void ExecuteFilter()
+    {
+        todosToShow = allTodos.Where(t => (filterById != null && t.UserId == filterById || filterById == null)
+        && (filterByIsCompleted != null && t.IsCompleted == filterByIsCompleted || filterByIsCompleted == null)).ToList();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        allTodos = todosToShow = TodosService.GetTodos();
+
+        var user = (await authenticationStateTask).User;
+        if (user.FindFirst(claim => claim.Type.Equals("Role")).Value.Equals("User"))
+        {
+            try
+            {
+                FilterByUserId(Int32.Parse(user.FindFirst(claim => claim.Type.Equals("ID")).Value + ""));
+            }
+            catch (Exception e) { }
+        }
+
+
+    }
+
+    private void CompletedChange(ChangeEventArgs evt, Models.Todo todo)
+    {
+        todo.IsCompleted = (bool)evt.Value;
+        TodosService.Update(todo);
+    }
+
+
+    private void RemoveTodo(int todoId)
+    {
+        Models.Todo todoToRemove = allTodos.First(t => t.TodoId == todoId);
+        TodosService.RemoveTodo(todoId);
+        allTodos.Remove(todoToRemove);
+    }
+}

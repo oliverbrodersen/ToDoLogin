@@ -1,0 +1,46 @@
+﻿@page "/AddTodo"
+@attribute [Authorize(Policy = "SecurityLevel2")]
+
+@using Models
+@using Data
+@inject IJSRuntime jsRuntime
+@inject ITodosService TodosService
+@inject NavigationManager NavigationManager
+@inject IAuthorizationService AuthorizationService
+
+<h3>AddTodo</h3>
+
+<EditForm Model="@newTodoItem" OnValidSubmit="@AddNewTodo">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <AuthorizeView Context="Form" Policy="IsAdmin">
+        <div class="form-group">
+            User Id:<br />
+            <InputNumber @bind-Value="newTodoItem.UserId" />
+        </div>
+    </AuthorizeView>
+    <div class="form-group">
+        Title: <br />
+        <InputTextArea rows="4" @bind-Value="newTodoItem.Title" />
+    </div>
+    <p class="actions">
+        <button class="btn btn-outline-dark" type="submit">Create</button>
+    </p>
+</EditForm>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; }
+
+    private Models.Todo newTodoItem = new Todo();
+
+    private async void AddNewTodo()
+    {
+        var user = (await authenticationStateTask).User;
+        if(user.FindFirst(claim => claim.Type.Equals("Role")).Value.Equals("User"))
+            newTodoItem.UserId = Int32.Parse(user.FindFirst(claim => claim.Type.Equals("ID")).Value);
+
+        TodosService.AddTodo(newTodoItem);
+        NavigationManager.NavigateTo("/Todos");
+    }
+}
